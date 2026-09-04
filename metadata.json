@@ -1,0 +1,6 @@
+{
+  "name": "Liquid Glass Launcher",
+  "description": "A fluid, customizable Android home launcher with translucent liquid glass aesthetics, gesture-driven app drawer, dynamic dock, pill, and widget support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
