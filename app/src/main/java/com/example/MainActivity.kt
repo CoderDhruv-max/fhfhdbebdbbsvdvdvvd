@@ -85,6 +85,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        viewModel.refreshOnResume()
         val isDefault = isDefaultLauncher(this)
         isDefaultLauncherState.value = isDefault
         if (isDefault) {
@@ -338,7 +339,8 @@ fun LauncherApp(
     val pillApps by viewModel.pillApps.collectAsStateWithLifecycle()
     val frequentApps by viewModel.frequentApps.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
-    val isAppDrawerOpen by viewModel.isAppDrawerOpen.collectAsStateWithLifecycle()
+    val drawerState by viewModel.drawerState.collectAsStateWithLifecycle()
+    val newRecentAppEvent by viewModel.newRecentAppEvent.collectAsStateWithLifecycle()
     val isCustomizationOpen by viewModel.isCustomizationOpen.collectAsStateWithLifecycle()
     val activeFolder by viewModel.activeFolder.collectAsStateWithLifecycle()
     val selectedAppForAction by viewModel.selectedAppForAction.collectAsStateWithLifecycle()
@@ -355,6 +357,9 @@ fun LauncherApp(
             settings = settings,
             widgetHelper = widgetHelper,
             isDefaultLauncher = isDefaultLauncher,
+            drawerState = drawerState,
+            newRecentAppEvent = newRecentAppEvent,
+            onConsumeNewRecentAppEvent = { viewModel.consumeNewRecentAppEvent() },
             onLaunchApp = { packageName -> viewModel.launchApp(packageName) },
             onOpenAppDrawer = { viewModel.openAppDrawer() },
             onOpenCustomization = { viewModel.openCustomization() },
@@ -374,12 +379,13 @@ fun LauncherApp(
 
         // Gesture-driven Liquid Glass App Drawer
         AppDrawerSheet(
-            isOpen = isAppDrawerOpen,
+            drawerState = drawerState,
             onClose = { viewModel.closeAppDrawer() },
             apps = apps,
             settings = settings,
             onLaunchApp = { packageName -> viewModel.launchApp(packageName) },
-            onAppLongClick = { app -> viewModel.openAppAction(app, false) }
+            onAppLongClick = { app -> viewModel.openAppAction(app, false) },
+            onDrawerStateChanged = { newState -> viewModel.setDrawerState(newState) }
         )
 
         // Customization Dialog

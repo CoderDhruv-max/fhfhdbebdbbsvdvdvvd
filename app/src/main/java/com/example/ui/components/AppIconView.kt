@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -31,6 +32,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -60,14 +63,18 @@ fun AppIconView(
 ) {
     val (pressModifier, triggerPress) = rememberIconPressState(onLaunch = onLaunch)
     var dragDistance by remember { mutableFloatStateOf(0f) }
+    var itemWindowOffset by remember { mutableStateOf(Offset.Zero) }
 
     val gestureModifier = if (onDragStart != null && onDrag != null && onDragEnd != null) {
         Modifier
+            .onGloballyPositioned { coordinates ->
+                itemWindowOffset = coordinates.positionInWindow()
+            }
             .pointerInput(app.packageName) {
                 detectDragGesturesAfterLongPress(
                     onDragStart = { offset ->
                         dragDistance = 0f
-                        onDragStart(offset)
+                        onDragStart(itemWindowOffset + offset)
                     },
                     onDrag = { change, dragAmount ->
                         change.consume()

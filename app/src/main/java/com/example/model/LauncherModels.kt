@@ -34,6 +34,13 @@ data class HomeItemPlacement(
     val col: Int
 )
 
+enum class LauncherDrawerState {
+    HOME,
+    DRAWER_OPENING,
+    DRAWER_OPEN,
+    DRAWER_CLOSING
+}
+
 enum class PillMode {
     RECENTS,
     FAVORITES,

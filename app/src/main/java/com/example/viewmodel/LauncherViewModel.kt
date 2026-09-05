@@ -8,6 +8,7 @@ import com.example.data.LauncherPreferences
 import com.example.model.AppInfo
 import com.example.model.DockScaleMode
 import com.example.model.HomeItemPlacement
+import com.example.model.LauncherDrawerState
 import com.example.model.LauncherItem
 import com.example.model.LauncherSettings
 import com.example.model.PillMode
@@ -19,6 +20,11 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.UUID
+
+data class NewRecentAppEvent(
+    val packageName: String,
+    val trigger: Long = System.currentTimeMillis()
+)
 
 class LauncherViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -33,8 +39,17 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     val installedApps: StateFlow<List<AppInfo>> = appRepository.installedApps
 
+    private val _drawerState = MutableStateFlow(LauncherDrawerState.HOME)
+    val drawerState: StateFlow<LauncherDrawerState> = _drawerState.asStateFlow()
+
     private val _isAppDrawerOpen = MutableStateFlow(false)
     val isAppDrawerOpen: StateFlow<Boolean> = _isAppDrawerOpen.asStateFlow()
+
+    private val _recentPackages = MutableStateFlow<List<String>>(preferences.loadRecentPackages())
+    val recentPackages: StateFlow<List<String>> = _recentPackages.asStateFlow()
+
+    private val _newRecentAppEvent = MutableStateFlow<NewRecentAppEvent?>(null)
+    val newRecentAppEvent: StateFlow<NewRecentAppEvent?> = _newRecentAppEvent.asStateFlow()
 
     private val _isCustomizationOpen = MutableStateFlow(false)
     val isCustomizationOpen: StateFlow<Boolean> = _isCustomizationOpen.asStateFlow()
@@ -66,13 +81,16 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Derived Pill Apps (Recents / Frequent / Favorites)
-    val pillApps: StateFlow<List<AppInfo>> = combine(installedApps, settings) { apps, currentSettings ->
+    val pillApps: StateFlow<List<AppInfo>> = combine(installedApps, settings, _recentPackages) { apps, currentSettings, recentsList ->
         when (currentSettings.pillMode) {
             PillMode.RECENTS -> {
-                val recents = apps.filter { it.lastLaunchTime > 0L }
-                    .sortedByDescending { it.lastLaunchTime }
-                    .take(5)
-                if (recents.isNotEmpty()) recents else apps.take(4)
+                val realRecents = recentsList.mapNotNull { pkg -> apps.find { it.packageName == pkg } }
+                if (realRecents.isNotEmpty()) {
+                    val remaining = apps.filter { app -> realRecents.none { it.packageName == app.packageName } }
+                    (realRecents + remaining).take(5)
+                } else {
+                    apps.take(4)
+                }
             }
             PillMode.FREQUENT -> {
                 val sorted = apps.filter { it.launchCount > 0 }
@@ -144,21 +162,61 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun launchApp(packageName: String, activityName: String? = null) {
+        val currentPillPackages = pillApps.value.map { it.packageName }
+        val isNewToPill = currentPillPackages.isNotEmpty() && !currentPillPackages.contains(packageName)
+
+        // 1. Move to index 0 of recent packages
+        val currentRecents = _recentPackages.value.filter { it != packageName }.toMutableList()
+        currentRecents.add(0, packageName)
+        val trimmed = currentRecents.take(15)
+        _recentPackages.value = trimmed
+        preferences.saveRecentPackages(trimmed)
+
+        // 2. Trigger New App White Perimeter Stroke ONLY if genuinely new to the pill
+        if (isNewToPill) {
+            _newRecentAppEvent.value = NewRecentAppEvent(
+                packageName = packageName,
+                trigger = System.currentTimeMillis()
+            )
+        }
+
+        // 3. Record launch in preferences and fire intent
         preferences.recordAppLaunch(packageName)
         appRepository.launchApp(packageName, activityName)
-        // Refresh app stats in memory
-        val stats = preferences.loadAppLaunchStats()
-        viewModelScope.launch {
-            appRepository.loadApps(stats)
-        }
+
+        // 4. Update in-memory app list immediately to reflect instant launch stats
+        appRepository.recordLaunch(packageName)
+    }
+
+    fun consumeNewRecentAppEvent() {
+        _newRecentAppEvent.value = null
     }
 
     fun openAppDrawer() {
+        _drawerState.value = LauncherDrawerState.DRAWER_OPENING
         _isAppDrawerOpen.value = true
     }
 
     fun closeAppDrawer() {
+        _drawerState.value = LauncherDrawerState.DRAWER_CLOSING
         _isAppDrawerOpen.value = false
+    }
+
+    fun setDrawerState(state: LauncherDrawerState) {
+        _drawerState.value = state
+        _isAppDrawerOpen.value = (state != LauncherDrawerState.HOME)
+    }
+
+    fun refreshOnResume() {
+        // Guarantee drawer state is cleanly reset if it was in the middle of closing
+        if (_drawerState.value == LauncherDrawerState.DRAWER_CLOSING) {
+            _drawerState.value = LauncherDrawerState.HOME
+            _isAppDrawerOpen.value = false
+        }
+        val stats = preferences.loadAppLaunchStats()
+        viewModelScope.launch {
+            appRepository.loadApps(stats)
+        }
     }
 
     fun openCustomization() {

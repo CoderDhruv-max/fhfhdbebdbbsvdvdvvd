@@ -125,6 +125,7 @@ fun LiquidGlassResizableDock(
     // Drag and drop state within dock
     var draggingIndex by remember { mutableIntStateOf(-1) }
     var dragHorizontalOffset by remember { mutableFloatStateOf(0f) }
+    var dragVerticalOffset by remember { mutableFloatStateOf(0f) }
     var targetHoverIndex by remember { mutableIntStateOf(-1) }
 
     val density = LocalDensity.current
@@ -241,6 +242,22 @@ fun LiquidGlassResizableDock(
                     dockApps.forEachIndexed { index, app ->
                         val isBeingDragged = draggingIndex == index
                         val isTargetSlot = targetHoverIndex == index && draggingIndex != -1
+                        val isLiftedToUnpin = isBeingDragged && dragVerticalOffset < -70f
+
+                        // Dynamic neighbor slot shift with spring physics
+                        val slotShift = when {
+                            draggingIndex != -1 && draggingIndex < targetHoverIndex && index > draggingIndex && index <= targetHoverIndex -> -slotWidthPx
+                            draggingIndex != -1 && draggingIndex > targetHoverIndex && index < draggingIndex && index >= targetHoverIndex -> slotWidthPx
+                            else -> 0f
+                        }
+                        val animatedSlotShift by animateFloatAsState(
+                            targetValue = slotShift,
+                            animationSpec = spring(
+                                stiffness = Spring.StiffnessMediumLow,
+                                dampingRatio = Spring.DampingRatioMediumBouncy
+                            ),
+                            label = "slot_shift_$index"
+                        )
 
                         Box(
                             modifier = Modifier
@@ -250,26 +267,37 @@ fun LiquidGlassResizableDock(
                                         onDragStart = {
                                             draggingIndex = index
                                             dragHorizontalOffset = 0f
+                                            dragVerticalOffset = 0f
                                             targetHoverIndex = index
                                         },
                                         onDrag = { change, dragAmount ->
                                             change.consume()
                                             dragHorizontalOffset += dragAmount.x
+                                            dragVerticalOffset += dragAmount.y
                                             val shiftSlots = (dragHorizontalOffset / slotWidthPx).roundToInt()
                                             val newTarget = (index + shiftSlots).coerceIn(0, dockApps.lastIndex)
                                             targetHoverIndex = newTarget
                                         },
                                         onDragEnd = {
-                                            if (draggingIndex != -1 && targetHoverIndex != -1 && draggingIndex != targetHoverIndex) {
-                                                onReorderDock(draggingIndex, targetHoverIndex)
+                                            if (draggingIndex != -1) {
+                                                if (dragVerticalOffset < -70f) {
+                                                    val appToUnpin = dockApps.getOrNull(draggingIndex)
+                                                    if (appToUnpin != null) {
+                                                        onUnpinFromDock(appToUnpin.packageName)
+                                                    }
+                                                } else if (targetHoverIndex != -1 && draggingIndex != targetHoverIndex) {
+                                                    onReorderDock(draggingIndex, targetHoverIndex)
+                                                }
                                             }
                                             draggingIndex = -1
                                             dragHorizontalOffset = 0f
+                                            dragVerticalOffset = 0f
                                             targetHoverIndex = -1
                                         },
                                         onDragCancel = {
                                             draggingIndex = -1
                                             dragHorizontalOffset = 0f
+                                            dragVerticalOffset = 0f
                                             targetHoverIndex = -1
                                         }
                                     )
@@ -282,22 +310,24 @@ fun LiquidGlassResizableDock(
                                     modifier = Modifier
                                         .size(iconSizeDp + 10.dp)
                                         .clip(CircleShape)
-                                        .background(Color(0x3D60A5FA))
-                                        .border(1.5.dp, Color(0xFF93C5FD), CircleShape)
+                                        .background(Color(0x4D38BDF8))
+                                        .border(1.5.dp, Color(0xFF7DD3FC), CircleShape)
                                 )
                             }
 
-                            // App Icon with drag offset and elevation
-                            val offsetX = if (isBeingDragged) dragHorizontalOffset else 0f
-                            val scale = if (isBeingDragged) 1.20f else 1.0f
+                            // App Icon with drag offset, spring shifts, and elevation
+                            val offsetX = if (isBeingDragged) dragHorizontalOffset else animatedSlotShift
+                            val offsetY = if (isBeingDragged) dragVerticalOffset else 0f
+                            val scale = if (isBeingDragged) 1.22f else 1.0f
 
                             Box(
                                 modifier = Modifier
                                     .graphicsLayer {
                                         translationX = offsetX
+                                        translationY = offsetY
                                         scaleX = scale
                                         scaleY = scale
-                                        shadowElevation = if (isBeingDragged) 18f else 0f
+                                        shadowElevation = if (isBeingDragged) 24f else 0f
                                     }
                             ) {
                                 AppIconView(
@@ -316,11 +346,67 @@ fun LiquidGlassResizableDock(
                                     showLabel = false
                                 )
                             }
+
+                            // Floating Unpin Badge when dragged upwards out of dock
+                            if (isLiftedToUnpin) {
+                                Box(
+                                    modifier = Modifier
+                                        .offset { IntOffset(dragHorizontalOffset.roundToInt(), (dragVerticalOffset - 60f).roundToInt()) }
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(Color(0xF0EF4444))
+                                        .border(1.dp, Color(0xFFFCA5A5), RoundedCornerShape(14.dp))
+                                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Unpin",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Text(
+                                            text = "Unpin",
+                                            color = Color.White,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // External Drag & Drop slot indicator in dock
+                    if (isExternalDragActive && draggedExternalApp != null && canPinMore) {
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = slotPaddingDp)
+                                .size(iconSizeDp + 6.dp)
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(Color(0x3338BDF8))
+                                .border(
+                                    1.5.dp,
+                                    Brush.linearGradient(listOf(Color(0xFF38BDF8), Color(0xFF818CF8))),
+                                    RoundedCornerShape(18.dp)
+                                )
+                                .clickable { onExternalDropOnDock(draggedExternalApp) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Drop to pin to dock",
+                                tint = Color(0xFF38BDF8),
+                                modifier = Modifier.size((iconSizeDp.value * 0.45f).dp)
+                            )
                         }
                     }
 
                     // "+" Button to Pin Frequently Used Apps if slots available
-                    if (canPinMore) {
+                    if (canPinMore && !isExternalDragActive) {
                         Box(
                             modifier = Modifier
                                 .padding(horizontal = slotPaddingDp)

@@ -34,6 +34,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -47,64 +49,56 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 object LiquidGlassDefaults {
-    val GlassWhite = Color(0xF5F7FA)
+    val GlassWhite = Color(0xF8FAFC)
     val GlassBorderHigh = Color(0x99FFFFFF)
-    val GlassBorderLow = Color(0x2EFFFFFF)
-    val GlassHighlight = Color(0x66FFFFFF)
-    val GlassShadow = Color(0x400A1128)
+    val GlassBorderLow = Color(0x33FFFFFF)
+    val GlassHighlight = Color(0x55FFFFFF)
+    val GlassShadow = Color(0x2B0F172A)
 }
 
 /**
- * Reusable LiquidGlass container component implementing pristine translucent
- * surface gradients, specular perimeter borders, and animated caustics shimmer.
- * Children inside content() remain 100% sharp and unblurred.
+ * Reusable Minimal Glassmorphism container component.
+ * Features:
+ * - Semi-transparent milky surface (60-75% perceived opacity)
+ * - Subtle vertical light gradient (frosted glass feel)
+ * - Very subtle crisp border (high-light at top, low-light at bottom)
+ * - Soft ambient depth shadow
+ * - Subtle inner specular highlight at the top edge
+ * - Rounded geometry
+ * - Children inside content() remain 100% sharp and unblurred.
  */
 @Composable
-fun LiquidGlass(
+fun GlassSurface(
     modifier: Modifier = Modifier,
     cornerRadius: Dp = 24.dp,
     opacity: Float = 0.70f,
-    blurRadius: Dp = 18.dp, // Maintained for API compatibility
-    elevation: Dp = 8.dp,
+    blurRadius: Dp = 18.dp,
+    elevation: Dp = 6.dp,
     borderWidth: Dp = 1.dp,
     tintColor: Color = Color.White,
-    showPerimeterEffect: Boolean = false,
     content: @Composable BoxScope.() -> Unit
 ) {
     val shape = RoundedCornerShape(cornerRadius)
+    val safeOpacity = opacity.coerceIn(0.55f, 0.85f)
 
-    // Animated diagonal specular light shimmer sweep (creative liquid glass effect)
-    val infiniteTransition = rememberInfiniteTransition(label = "glass_shimmer")
-    val shimmerOffset by infiniteTransition.animateFloat(
-        initialValue = -1.2f,
-        targetValue = 2.2f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 5000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "shimmer_offset"
-    )
-
-    val backgroundBrush = remember(opacity, tintColor) {
-        val safeOpacity = opacity.coerceIn(0.20f, 0.90f)
-        Brush.linearGradient(
+    // Milky translucent glass gradient (calm, elegant, minimal)
+    val backgroundBrush = remember(safeOpacity, tintColor) {
+        Brush.verticalGradient(
             colors = listOf(
-                tintColor.copy(alpha = (safeOpacity * 0.75f).coerceAtMost(0.85f)),
-                Color(0xFFE2E8F0).copy(alpha = (safeOpacity * 0.65f)),
-                Color(0xFFCBD5E1).copy(alpha = (safeOpacity * 0.55f))
-            ),
-            start = Offset(0f, 0f),
-            end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
+                tintColor.copy(alpha = (safeOpacity * 0.92f).coerceAtMost(0.85f)),
+                Color(0xFFF1F5F9).copy(alpha = (safeOpacity * 0.78f).coerceAtMost(0.75f)),
+                Color(0xFFE2E8F0).copy(alpha = (safeOpacity * 0.68f).coerceAtMost(0.65f))
+            )
         )
     }
 
+    // Subtle natural directional lighting border
     val borderBrush = remember {
-        Brush.linearGradient(
+        Brush.verticalGradient(
             colors = listOf(
                 LiquidGlassDefaults.GlassBorderHigh,
-                Color(0x8038BDF8), // Cyan refraction touch
-                LiquidGlassDefaults.GlassBorderLow,
-                LiquidGlassDefaults.GlassBorderHigh
+                Color.White.copy(alpha = 0.45f),
+                LiquidGlassDefaults.GlassBorderLow
             )
         )
     }
@@ -118,54 +112,67 @@ fun LiquidGlass(
                 spotColor = LiquidGlassDefaults.GlassShadow
             )
             .clip(shape)
-            .background(backgroundBrush)
             .border(
                 border = BorderStroke(borderWidth, borderBrush),
                 shape = shape
             )
     ) {
-        // Specular top-left refraction gloss overlay
+        // Frosted Glass Blur layer matching the "Liquid Glass" theme
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .blur(radius = blurRadius, edgeTreatment = BlurredEdgeTreatment.Rectangle)
+                .background(backgroundBrush)
+        )
+
+        // Subtle top specular highlight glint for milky glass depth
         Box(
             modifier = Modifier
                 .matchParentSize()
                 .background(
-                    Brush.radialGradient(
+                    Brush.verticalGradient(
                         colors = listOf(
                             Color.White.copy(alpha = 0.32f),
                             Color.White.copy(alpha = 0.08f),
                             Color.Transparent
                         ),
-                        center = Offset(0f, 0f),
-                        radius = 450f
+                        startY = 0f,
+                        endY = 120f
                     )
                 )
         )
 
-        // Animated specular caustic sheen sweep
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .graphicsLayer {
-                    alpha = 0.60f
-                }
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color.White.copy(alpha = 0.04f),
-                            Color.White.copy(alpha = 0.22f),
-                            Color.White.copy(alpha = 0.04f),
-                            Color.Transparent
-                        ),
-                        start = Offset(shimmerOffset * 600f, 0f),
-                        end = Offset((shimmerOffset + 0.6f) * 600f, 400f)
-                    )
-                )
-        )
-
-        // Crystal clear content (icons, text, buttons are NEVER blurred)
+        // Crystal clear content
         content()
+    }
+}
 
+/**
+ * Reusable LiquidGlass container component implementing minimal glassmorphism.
+ * Maintained for backwards-compatibility across the app.
+ */
+@Composable
+fun LiquidGlass(
+    modifier: Modifier = Modifier,
+    cornerRadius: Dp = 24.dp,
+    opacity: Float = 0.70f,
+    blurRadius: Dp = 18.dp, // Maintained for API compatibility
+    elevation: Dp = 6.dp,
+    borderWidth: Dp = 1.dp,
+    tintColor: Color = Color.White,
+    showPerimeterEffect: Boolean = false,
+    content: @Composable BoxScope.() -> Unit
+) {
+    GlassSurface(
+        modifier = modifier,
+        cornerRadius = cornerRadius,
+        opacity = opacity,
+        blurRadius = blurRadius,
+        elevation = elevation,
+        borderWidth = borderWidth,
+        tintColor = tintColor
+    ) {
+        content()
         if (showPerimeterEffect) {
             PerimeterHighlightAnimation(
                 trigger = true,
@@ -176,7 +183,7 @@ fun LiquidGlass(
 }
 
 /**
- * LiquidGlassSurface backwards-compatible alias that forwards to LiquidGlass container.
+ * LiquidGlassSurface backwards-compatible alias that forwards to GlassSurface container.
  */
 @Composable
 fun LiquidGlassSurface(
@@ -184,23 +191,28 @@ fun LiquidGlassSurface(
     cornerRadius: Dp = 24.dp,
     opacity: Float = 0.70f,
     blurRadius: Dp = 18.dp,
-    elevation: Dp = 8.dp,
+    elevation: Dp = 6.dp,
     borderWidth: Dp = 1.dp,
     tintColor: Color = Color.White,
     showPerimeterEffect: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    LiquidGlass(
+    GlassSurface(
         modifier = modifier,
         cornerRadius = cornerRadius,
         opacity = opacity,
         blurRadius = blurRadius,
         elevation = elevation,
         borderWidth = borderWidth,
-        tintColor = tintColor,
-        showPerimeterEffect = showPerimeterEffect
+        tintColor = tintColor
     ) {
         content()
+        if (showPerimeterEffect) {
+            PerimeterHighlightAnimation(
+                trigger = true,
+                cornerRadius = cornerRadius
+            )
+        }
     }
 }
 
@@ -213,7 +225,7 @@ fun LiquidGlassSurface(
 fun LiquidGlassPill(
     modifier: Modifier = Modifier,
     cornerRadius: Dp = 22.dp,
-    opacity: Float = 0.72f,
+    opacity: Float = 0.70f,
     strokeTrigger: Long = 0L,
     content: @Composable RowScope.() -> Unit
 ) {
@@ -221,14 +233,14 @@ fun LiquidGlassPill(
         modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
-        LiquidGlassSurface(
+        GlassSurface(
             cornerRadius = cornerRadius,
             opacity = opacity,
-            elevation = 8.dp
+            elevation = 6.dp
         ) {
             Row(
                 modifier = Modifier
-                    .padding(horizontal = 12.dp, vertical = 3.dp),
+                    .padding(horizontal = 10.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 content = content
             )
@@ -249,20 +261,20 @@ fun LiquidGlassPill(
 @Composable
 fun LiquidGlassDock(
     modifier: Modifier = Modifier,
-    cornerRadius: Dp = 32.dp,
-    opacity: Float = 0.72f,
+    cornerRadius: Dp = 30.dp,
+    opacity: Float = 0.70f,
     content: @Composable RowScope.() -> Unit
 ) {
-    LiquidGlassSurface(
+    GlassSurface(
         modifier = modifier,
         cornerRadius = cornerRadius,
         opacity = opacity,
-        elevation = 14.dp
+        elevation = 10.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             content = content
         )
@@ -270,16 +282,14 @@ fun LiquidGlassDock(
 }
 
 /**
- * Interactive liquid icon press animation:
- * Organic jelly squash & stretch physics (scaleX & scaleY deform like a liquid drop),
- * followed by a bouncy spring overshoot.
+ * Interactive icon press animation:
+ * Curve: 1.0 -> 0.93 -> 1.02 -> 1.0 with subtle brightness response (180-240ms).
  */
 @Composable
 fun rememberIconPressState(
     onLaunch: () -> Unit
 ): Pair<Modifier, () -> Unit> {
-    val scaleX = remember { Animatable(1.0f) }
-    val scaleY = remember { Animatable(1.0f) }
+    val scale = remember { Animatable(1.0f) }
     val brightness = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     var isTriggered by remember { mutableStateOf(false) }
@@ -288,25 +298,17 @@ fun rememberIconPressState(
         if (!isTriggered) {
             isTriggered = true
             scope.launch {
-                // Phase 1: Liquid squish compression
-                launch { brightness.animateTo(0.24f, tween(60)) }
-                launch { scaleX.animateTo(1.10f, tween(60, easing = FastOutSlowInEasing)) }
-                scaleY.animateTo(0.88f, tween(60, easing = FastOutSlowInEasing))
+                // Step 1: 1.0 -> 0.93 with subtle highlight response (~70ms)
+                launch { brightness.animateTo(0.18f, tween(70, easing = FastOutSlowInEasing)) }
+                scale.animateTo(0.93f, tween(70, easing = FastOutSlowInEasing))
 
-                // Phase 2: Elastic liquid bounce release
-                launch { brightness.animateTo(0f, tween(140)) }
-                launch {
-                    scaleX.animateTo(
-                        1.0f,
-                        spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
-                    )
-                }
-                scaleY.animateTo(
-                    1.0f,
-                    spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
-                )
+                // Step 2: 0.93 -> 1.02 subtle rebound (~70ms)
+                scale.animateTo(1.02f, tween(70, easing = FastOutSlowInEasing))
 
-                delay(15)
+                // Step 3: 1.02 -> 1.0 settle back to normal (~70ms)
+                launch { brightness.animateTo(0f, tween(70, easing = FastOutSlowInEasing)) }
+                scale.animateTo(1.0f, tween(70, easing = FastOutSlowInEasing))
+
                 isTriggered = false
                 onLaunch()
             }
@@ -314,10 +316,48 @@ fun rememberIconPressState(
     }
 
     val modifier = Modifier.graphicsLayer {
-        this.scaleX = scaleX.value
-        this.scaleY = scaleY.value
-        alpha = (1f + brightness.value * 0.2f).coerceAtMost(1f)
+        this.scaleX = scale.value
+        this.scaleY = scale.value
+        alpha = (1f + brightness.value * 0.15f).coerceAtMost(1f)
     }
 
     return Pair(modifier, trigger)
+}
+
+/**
+ * Modifier extension for physical glass press response:
+ * Slightly brighter, slightly smaller (scale 0.97), border highlight, soft spring return.
+ */
+@Composable
+fun Modifier.glassPressable(
+    onClick: () -> Unit
+): Modifier {
+    val scale = remember { Animatable(1f) }
+    val brightness = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+
+    return this
+        .graphicsLayer {
+            scaleX = scale.value
+            scaleY = scale.value
+            alpha = (1f + brightness.value * 0.2f).coerceAtMost(1f)
+        }
+        .pointerInput(Unit) {
+            detectTapGestures(
+                onPress = {
+                    scope.launch {
+                        scale.animateTo(0.97f, tween(80))
+                        brightness.animateTo(0.20f, tween(80))
+                    }
+                    val released = tryAwaitRelease()
+                    scope.launch {
+                        scale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
+                        brightness.animateTo(0f, tween(120))
+                    }
+                    if (released) {
+                        onClick()
+                    }
+                }
+            )
+        }
 }

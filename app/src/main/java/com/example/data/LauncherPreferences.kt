@@ -34,6 +34,8 @@ class LauncherPreferences(context: Context) {
         private const val KEY_PILL_APPS = "pill_apps_json"
         private const val KEY_HOME_ITEMS = "home_items_json"
         private const val KEY_APP_STATS = "app_launch_stats_json"
+        private const val KEY_RECENT_PACKAGES = "recent_packages_ordered"
+        private const val KEY_KNOWN_PILL_PACKAGES = "known_pill_packages"
     }
 
     fun loadSettings(): LauncherSettings {
@@ -224,6 +226,22 @@ class LauncherPreferences(context: Context) {
             // Ignore parse errors
         }
         return result
+    }
+
+    fun loadRecentPackages(): List<String> {
+        return loadStringList(KEY_RECENT_PACKAGES)
+    }
+
+    fun saveRecentPackages(packages: List<String>) {
+        saveStringList(KEY_RECENT_PACKAGES, packages)
+    }
+
+    fun loadKnownPillPackages(): List<String> {
+        return loadStringList(KEY_KNOWN_PILL_PACKAGES)
+    }
+
+    fun saveKnownPillPackages(packages: List<String>) {
+        saveStringList(KEY_KNOWN_PILL_PACKAGES, packages)
     }
 
     private fun loadStringList(key: String): List<String> {

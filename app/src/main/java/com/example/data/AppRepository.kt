@@ -117,6 +117,17 @@ class AppRepository(private val context: Context) {
         _installedApps.value = appsList
     }
 
+    fun recordLaunch(packageName: String) {
+        val now = System.currentTimeMillis()
+        _installedApps.value = _installedApps.value.map { app ->
+            if (app.packageName == packageName) {
+                app.copy(lastLaunchTime = now, launchCount = app.launchCount + 1)
+            } else {
+                app
+            }
+        }
+    }
+
     fun refreshApps() {
         // Run in background coroutine if called from broadcast receiver
         kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
